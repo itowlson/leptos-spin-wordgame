@@ -29,8 +29,9 @@ pub fn App() -> impl IntoView {
 /// Renders the home page of your application.
 #[component]
 fn HomePage() -> impl IntoView {
-    let (bot_tiles, _set_bot_tiles) = create_signal(vec!['A', 'B', 'C', 'D', 'E']);
-    let (in_progress, _set_in_progress) = create_signal("FIE".to_owned());
+    let bot_tiles_coll: Vec<_> = ['A', 'B', 'C', 'D', 'E'].into_iter().map(|ch| create_signal(ch)).collect();
+    let (bot_tiles, set_bot_tiles) = create_signal(bot_tiles_coll);
+    let (in_progress, set_in_progress) = create_signal("FIE".to_owned());
     let (secs_remaining, set_secs_remaining) = create_signal(10);
     let (score, _set_score) = create_signal(0);
 
@@ -51,11 +52,29 @@ fn HomePage() -> impl IntoView {
         )
     });
 
+    let handle = window_event_listener(ev::keypress, move |ev| {
+        let k = ev.key();
+        if k.len() == 1 {
+            let ch = k.chars().next().unwrap();
+            if ch.is_alphabetic() {
+                leptos::logging::log!("APPENDING! {ch}");
+                set_in_progress.update(|w| *w = format!("{w}{}", ch.to_uppercase()));
+                // fake bot activity
+                set_bot_tiles.update(|tiles| {
+                    (*tiles)[3].1.update(|ch| *ch = random_tile());
+                });
+            }
+        }
+    });
+    on_cleanup(move || handle.remove());
+
     view! {
-        <h1><TimeInfo secs_remaining={secs_remaining} /> " | Score: " {score} </h1>
-        <BotTiles tiles={bot_tiles} />
-        <p />
-        <Word word={in_progress} />
+        <div>
+            <h1><TimeInfo secs_remaining={secs_remaining} /> " | Score: " {score} </h1>
+            <BotTiles tiles={bot_tiles} />
+            <p />
+            <Word word={in_progress} />
+        </div>
     }
 }
 
@@ -72,10 +91,10 @@ fn TimeInfo(secs_remaining: ReadSignal<i32>) -> impl IntoView {
 }
 
 #[component]
-fn BotTiles(tiles: ReadSignal<Vec<char>>) -> impl IntoView {
+fn BotTiles(tiles: ReadSignal<Vec<(ReadSignal<char>, WriteSignal<char>)>>) -> impl IntoView {
     view! {
         <div>
-            { tiles.get().iter().map(|c| view! { <Tile letter={*c} /> }).collect_view() }
+            { tiles.get().iter().map(|c| view! { <Tile letter={c.0} /> }).collect_view() }
         </div>
     }
 }
@@ -83,14 +102,15 @@ fn BotTiles(tiles: ReadSignal<Vec<char>>) -> impl IntoView {
 #[component]
 fn Word(word: ReadSignal<String>) -> impl IntoView {
     view! {
-        <div>
-            { word.get().chars().map(|c| view! { <Tile letter={c} /> }).collect_view() }
-        </div>
+        <div><strong>{word}</strong></div>
+        // <div>
+        //     { word.get().chars().map(|c| view! { <Tile letter={c} /> }).collect_view() }
+        // </div>
     }
 }
 
 #[component]
-fn Tile(letter: char) -> impl IntoView {
+fn Tile(letter: ReadSignal<char>) -> impl IntoView {
     view! { <span>"[ " {letter} " ]"</span> }
 }
 
@@ -114,4 +134,10 @@ fn NotFound() -> impl IntoView {
     view! {
         <h1>"Not Found"</h1>
     }
+}
+
+fn random_tile() -> char {
+    use rand::distributions::Distribution;
+    let ascii_upper = rand::distributions::Uniform::new_inclusive('A', 'Z');
+    ascii_upper.sample(&mut rand::thread_rng())
 }

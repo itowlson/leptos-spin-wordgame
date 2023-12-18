@@ -21,6 +21,7 @@ leptos-spin = { git = "https://github.com/fermyon/leptos-spin", branch = "main",
 serde = "1.0.192"
 spin-sdk = { git = "https://github.com/fermyon/spin", tag = "v2.0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
+rand = "0.8.5"
 
 [workspace]
 
