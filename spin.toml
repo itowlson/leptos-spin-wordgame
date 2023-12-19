@@ -12,6 +12,7 @@ component = "wordgame"
 
 [component.wordgame]
 source = "target/wasm32-wasi/release/wordgame.wasm"
+files = ["words.txt"]
 allowed_outbound_hosts = []
 key_value_stores = ["default"]
 [component.wordgame.build]
