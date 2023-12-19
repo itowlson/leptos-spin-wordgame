@@ -31,6 +31,12 @@ const GAME_TIME_SECONDS: i32 = 60;
 // const HUMAN_MAKES_WORD_BOOST: i32 = 2;
 const COMPUTER_THWARTED_BOOST: i32 = 5;
 
+#[derive(Clone, Debug)]
+enum Player {
+    Human,
+    Computer,
+}
+
 /// Renders the home page of your application.
 #[component]
 fn HomePage() -> impl IntoView {
@@ -39,9 +45,12 @@ fn HomePage() -> impl IntoView {
 
     let starter = random_tile().to_string();
     let (in_progress, set_in_progress) = create_signal(starter);
+    let (bot_cunning_plan, set_bot_cunning_plan) = create_signal("???".to_owned());
 
     let (secs_remaining, set_secs_remaining) = create_signal(GAME_TIME_SECONDS);
     let (score, set_score) = create_signal(0);
+
+    let (made_words, set_made_words) = create_signal::<Vec<(String, Player)>>(vec![]);
 
     create_effect(move |_| {
         set_interval(
@@ -51,6 +60,10 @@ fn HomePage() -> impl IntoView {
     });
 
     let handle = window_event_listener(ev::keypress, move |ev| {
+        if secs_remaining.get() <= 0 {
+            return;
+        }
+        
         let k = ev.key();
         if k.len() == 1 {
             let ch = k.chars().next().unwrap();
@@ -62,9 +75,16 @@ fn HomePage() -> impl IntoView {
                     if matches!(is_word, IsWord::Yes) && candidate.len() > 2 {
                         // set_secs_remaining.update(|s| *s += HUMAN_MAKES_WORD_BOOST);
                         logging::log!("Human completed {candidate}");  // TODO: make a fuss
-                        set_score.update(|s| *s -= 1);
+                        set_made_words.update(|ws| {
+                            // TODO: better way to do this!
+                            let mut ws2 = ws.clone();
+                            ws2.push((candidate.clone(), Player::Human));
+                            *ws = ws2;
+                        });
+                        set_score.update(|s| { let u: usize = *s; *s = u.saturating_sub(1); });  // There's a type inference issue which forces us to spell out the type here
                         let starter = random_tile().to_string();
                         set_in_progress.update(|w| *w = starter);
+                        set_bot_cunning_plan.update(|w| *w = "???".to_owned());
                         return;
                     }
                     if matches!(is_prefix, IsPrefix::No) {
@@ -74,12 +94,20 @@ fn HomePage() -> impl IntoView {
                     }
 
                     set_in_progress.update(|w| *w = candidate.clone());
-    
+
+                    set_bot_cunning_plan.update(|w| *w = "???".to_owned());
+
                     loop {
                         let bot_tile_chars: Vec<_> = bot_tiles.get().iter().map(|s| s.0.get()).collect();
                         match pick_tile(in_progress.get(), bot_tile_chars.clone()).await.unwrap() {
                             PickTileResult::Complete { index, word } => {
                                 logging::log!("Computer forced to complete {word}");  // TODO: make a fuss
+                                set_made_words.update(|ws| {
+                                    // TODO: better way to do this!
+                                    let mut ws2 = ws.clone();
+                                    ws2.push((word.clone(), Player::Computer));
+                                    *ws = ws2;
+                                });
                                 set_score.update(|s| *s += word.len());
                                 let starter = random_tile().to_string();
                                 set_in_progress.update(|w| *w = starter);
@@ -91,6 +119,7 @@ fn HomePage() -> impl IntoView {
                             PickTileResult::Extend { index, partial, witness } => {
                                 logging::log!("Computer move legitimated by {witness}");
                                 set_in_progress.update(|w| *w = partial);
+                                set_bot_cunning_plan.update(|w| *w = witness);
                                 set_bot_tiles.update(|tiles| {
                                     (*tiles)[index].1.update(|ch| *ch = random_tile());
                                 });
@@ -119,6 +148,9 @@ fn HomePage() -> impl IntoView {
             <BotTiles tiles={bot_tiles} />
             <p />
             <Word word={in_progress} />
+            <DraftWord word={bot_cunning_plan} />
+            <p />
+            <WordList words={made_words} />
         </div>
     }
 }
@@ -148,9 +180,32 @@ fn BotTiles(tiles: ReadSignal<Vec<(ReadSignal<char>, WriteSignal<char>)>>) -> im
 fn Word(word: ReadSignal<String>) -> impl IntoView {
     view! {
         <div><strong>{word}</strong></div>
-        // <div>
-        //     { word.get().chars().map(|c| view! { <Tile letter={c} /> }).collect_view() }
-        // </div>
+    }
+}
+
+#[component]
+fn DraftWord(word: ReadSignal<String>) -> impl IntoView {
+    view! {
+        <div style="color: grey"><i>"(Bot cunning plan:" {word} ")"</i></div>
+    }
+}
+
+fn made_word_key(made_word: &(String, Player)) -> String {
+    format!("{}/{:?}", made_word.0, made_word.1)
+}
+
+#[component]
+fn WordList(words: ReadSignal<Vec<(String, Player)>>) -> impl IntoView {
+    view! {
+        <div>
+            <For each=move || words.get()
+                key=|w| made_word_key(w)
+                children=move |(w, p)| match p {
+                    Player::Computer => view! { " " <span style="background-color: antiquewhite">{w}</span> " " },
+                    Player::Human => view! { " " <span style="background-color: mistyrose">{w}</span> " " },
+                }
+            />
+        </div>
     }
 }
 
